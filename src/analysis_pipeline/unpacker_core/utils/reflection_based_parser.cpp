@@ -70,6 +70,8 @@ void ReflectionBasedParser::BuildJsonMappingFromReflection() {
         running_offset += size;
     }
 
+    total_parsed_size = running_offset;
+
 
     if (json_field_mapping_.empty()) {
         throw std::runtime_error("ReflectionBasedParser: No fields found for class " + class_name_);
