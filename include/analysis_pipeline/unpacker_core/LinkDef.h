@@ -5,6 +5,7 @@
 #pragma link off all functions;
 
 #pragma link C++ class ByteStreamProcessorStage+;
-#pragma link C++ class SimpleDataProductUnpackerStage+;
+#pragma link C++ class ByteStreamToReflectedDataProductStage+;
+#pragma link C++ class ByteStreamToDataProductStage+;
 
 #endif

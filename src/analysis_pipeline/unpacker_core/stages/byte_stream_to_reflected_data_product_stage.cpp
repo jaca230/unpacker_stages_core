@@ -1,15 +1,15 @@
-#include "analysis_pipeline/unpacker_core/stages/simple_data_product_unpacker_stage.h"
+#include "analysis_pipeline/unpacker_core/stages/byte_stream_to_reflected_data_product_stage.h"
 
 #include <TParameter.h>
 #include <TClass.h>
 #include <TObject.h>
 #include <spdlog/spdlog.h>
 
-ClassImp(SimpleDataProductUnpackerStage)
+ClassImp(ByteStreamToReflectedDataProductStage)
 
-SimpleDataProductUnpackerStage::SimpleDataProductUnpackerStage() = default;
+ByteStreamToReflectedDataProductStage::ByteStreamToReflectedDataProductStage() = default;
 
-void SimpleDataProductUnpackerStage::OnInit() {
+void ByteStreamToReflectedDataProductStage::OnInit() {
     ByteStreamProcessorStage::OnInit();
 
     root_class_name_ = parameters_.value("root_class_name", "");
@@ -19,10 +19,10 @@ void SimpleDataProductUnpackerStage::OnInit() {
     }
 
     default_endianness_ = parameters_.value("default_endianness", "little");
-    data_product_name_ = parameters_.value("data_product_name", "simple_data_product");
+    data_product_name_ = parameters_.value("data_product_name", "reflected_data_product");
 
-    cls_ = TClass::GetClass(root_class_name_.c_str());
-    if (!cls_) {
+    root_class_ = TClass::GetClass(root_class_name_.c_str());
+    if (!root_class_) {
         spdlog::error("[{}] ROOT class '{}' not found during OnInit", Name(), root_class_name_);
         throw std::runtime_error("ROOT class not found: " + root_class_name_);
     }
@@ -34,28 +34,29 @@ void SimpleDataProductUnpackerStage::OnInit() {
     } catch (const std::exception& e) {
         spdlog::error("[{}] Failed to initialize ReflectionBasedParser: {}", Name(), e.what());
         parser_.reset();
+        throw;
     }
 }
 
-void SimpleDataProductUnpackerStage::Process() {
-    if (!parser_ || !cls_) {
-        spdlog::error("[{}] Parser or class pointer not initialized, aborting Process()", Name());
+void ByteStreamToReflectedDataProductStage::Process() {
+    if (!parser_ || !root_class_) {
+        spdlog::error("[{}] Parser or ROOT class pointer not initialized, aborting Process()", Name());
         return;
     }
 
-    auto lock = getInputByteStreamLock();
-    if (!lock) {
+    auto input_lock = getInputByteStreamLock();
+    if (!input_lock) {
         spdlog::error("[{}] Failed to acquire ByteStream lock '{}'", Name(), input_byte_stream_product_name_);
         return;
     }
 
-    std::shared_ptr<TObject> base_ptr = lock->getSharedObject();
-    if (!base_ptr) {
+    std::shared_ptr<TObject> base_obj = input_lock->getSharedObject();
+    if (!base_obj) {
         spdlog::warn("[{}] ByteStream product has null shared object", Name());
         return;
     }
 
-    auto byte_stream_ptr = std::dynamic_pointer_cast<dataProducts::ByteStream>(base_ptr);
+    auto byte_stream_ptr = std::dynamic_pointer_cast<dataProducts::ByteStream>(base_obj);
     if (!byte_stream_ptr || !byte_stream_ptr->data || byte_stream_ptr->size == 0) {
         spdlog::warn("[{}] Invalid or empty ByteStream object", Name());
         return;
@@ -64,29 +65,30 @@ void SimpleDataProductUnpackerStage::Process() {
     const uint8_t* buffer = byte_stream_ptr->data;
     size_t buffer_size = byte_stream_ptr->size;
 
-    int last_index = getLastReadIndex();
-    size_t start_offset = (last_index < 0) ? 0 : static_cast<size_t>(last_index);
+    int last_read_index = getLastReadIndex();
+    size_t parse_offset = (last_read_index < 0) ? 0 : static_cast<size_t>(last_read_index);
 
-    TObject* obj = static_cast<TObject*>(cls_->New());
-    if (!obj) {
+    TObject* product_obj = static_cast<TObject*>(root_class_->New());
+    if (!product_obj) {
         spdlog::error("[{}] Failed to instantiate ROOT object of class '{}'", Name(), root_class_name_);
         return;
     }
 
-    if (!parser_->Parse(buffer, buffer_size, start_offset, obj)) {
+    bool parse_success = parser_->Parse(buffer, buffer_size, parse_offset, product_obj);
+    if (!parse_success) {
         spdlog::error("[{}] Failed to parse buffer into ROOT object", Name());
-        delete obj;
+        delete product_obj;
         return;
     }
 
-    auto pdp = std::make_unique<PipelineDataProduct>();
-    pdp->setName(data_product_name_);
-    pdp->setObject(std::unique_ptr<TObject>(obj));
-    pdp->addTag("simple_data_product");
-    pdp->addTag("built_by_simple_data_product_unpacker");
+    auto data_product = std::make_unique<PipelineDataProduct>();
+    data_product->setName(data_product_name_);
+    data_product->setObject(std::unique_ptr<TObject>(product_obj));
+    data_product->addTag("reflected_data_product");
+    data_product->addTag("built_by_byte_stream_to_reflected_data_product_stage");
 
-    getDataProductManager()->addOrUpdate(data_product_name_, std::move(pdp));
-    setLastReadIndex(static_cast<int>(start_offset + parser_->GetTotalParsedSize()));
+    getDataProductManager()->addOrUpdate(data_product_name_, std::move(data_product));
+    setLastReadIndex(static_cast<int>(parse_offset + parser_->GetTotalParsedSize()));
 
     spdlog::debug("[{}] Produced data product '{}', updated last read index to {}", Name(), data_product_name_, getLastReadIndex());
 }
