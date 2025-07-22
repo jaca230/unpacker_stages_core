@@ -1,0 +1,4 @@
+@PACKAGE_INIT@
+
+set(_package_name "unpacker_stages_core")
+include("${CMAKE_CURRENT_LIST_DIR}/${_package_name}Targets.cmake")
