@@ -92,7 +92,12 @@ bool FieldMappingParser::ExtractAndAssignField(const uint8_t* buffer,
     std::string type_name = member->GetTypeName();
 
     // Dispatch on known types - expand as needed
-    if (type_name == "unsigned short" || type_name == "UInt_t" || type_name == "uint16_t") {
+    if (type_name == "unsigned char" || type_name == "UChar_t" || type_name == "uint8_t") {
+        uint16_t val;
+        if (!ReadValue<uint16_t>(buffer, buffer_size, abs_offset, little_endian, val)) return false;
+        return AssignValueToMember<uint16_t>(obj, member, val);
+    }
+    else if (type_name == "unsigned short" || type_name == "UInt_t" || type_name == "uint16_t") {
         uint16_t val;
         if (!ReadValue<uint16_t>(buffer, buffer_size, abs_offset, little_endian, val)) return false;
         return AssignValueToMember<uint16_t>(obj, member, val);
