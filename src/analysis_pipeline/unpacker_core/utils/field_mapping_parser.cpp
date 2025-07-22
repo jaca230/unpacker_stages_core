@@ -1,4 +1,5 @@
 #include "analysis_pipeline/unpacker_core/utils/field_mapping_parser.h"
+#include <spdlog/spdlog.h>
 
 FieldMappingParser::FieldMappingParser() {
     uint16_t test = 0x1;

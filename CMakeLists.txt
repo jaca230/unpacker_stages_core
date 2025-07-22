@@ -107,6 +107,7 @@ set(PLUGIN_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/include/analysis_pipeline/${PL
 set(ROOT_LINKDEF ${PLUGIN_ROOT_PATH}/LinkDef.h)
 set(ROOT_DICTIONARY_INCLUDE_OPTIONS "-I${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+append_target_includes_to_root_dict(analysis_pipeline::nlohmann_json_header_only)
 append_target_includes_to_root_dict(analysis_pipeline::analysis_pipeline_core)
 append_target_includes_to_root_dict(analysis_pipeline::unpacker_data_products_core)
 
