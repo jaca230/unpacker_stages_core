@@ -64,18 +64,6 @@ void SimpleDataProductUnpackerStage::Process() {
     const uint8_t* buffer = byte_stream_ptr->data;
     size_t buffer_size = byte_stream_ptr->size;
 
-    const size_t bytes_to_print = 15 * 8;
-    const size_t limit = (buffer_size < bytes_to_print) ? buffer_size : bytes_to_print;
-
-    std::ostringstream oss;
-    oss << "[" << Name() << "] ByteStream first " << limit << " bytes (hex): ";
-
-    for (size_t i = 0; i < limit; ++i) {
-        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(buffer[i]) << " ";
-    }
-
-    spdlog::debug(oss.str());
-
     int last_index = getLastReadIndex();
     size_t start_offset = (last_index < 0) ? 0 : static_cast<size_t>(last_index);
 

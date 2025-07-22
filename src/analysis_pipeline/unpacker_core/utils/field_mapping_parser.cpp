@@ -23,9 +23,6 @@ bool FieldMappingParser::ParseAndFill(const uint8_t* buffer,
         return false;
     }
 
-    // Debug print entire JSON mapping, indented for readability
-    spdlog::debug("FieldMappingParser: Field mapping JSON:\n{}", json_field_mapping.dump(4));
-
     for (auto it = json_field_mapping.begin(); it != json_field_mapping.end(); ++it) {
         const std::string& member_name = it.key();
         const nlohmann::json& field_info = it.value();
