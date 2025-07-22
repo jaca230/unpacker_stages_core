@@ -88,5 +88,5 @@ void SimpleDataProductUnpackerStage::Process() {
     getDataProductManager()->addOrUpdate(data_product_name_, std::move(pdp));
     setLastReadIndex(static_cast<int>(start_offset + parser_->GetTotalParsedSize()));
 
-    spdlog::info("[{}] Produced data product '{}', updated last read index to {}", Name(), data_product_name_, getLastReadIndex());
+    spdlog::debug("[{}] Produced data product '{}', updated last read index to {}", Name(), data_product_name_, getLastReadIndex());
 }
