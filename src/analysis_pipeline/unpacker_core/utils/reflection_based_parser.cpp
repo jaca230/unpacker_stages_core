@@ -44,6 +44,8 @@ void ReflectionBasedParser::BuildJsonMappingFromReflection() {
 
     size_t total_parsed_size = 0;
 
+    size_t running_offset = 0;
+
     for (TIter it(real_data); TRealData* rd = static_cast<TRealData*>(it()); ) {
         const std::string name = rd->GetName();
         if (skip_fields.count(name) > 0) continue;
@@ -57,17 +59,17 @@ void ReflectionBasedParser::BuildJsonMappingFromReflection() {
             continue;
         }
 
-        const ptrdiff_t offset = rd->GetThisOffset();
         const size_t size = dm->GetUnitSize();
 
         nlohmann::json field_json;
-        field_json["offset"] = static_cast<int64_t>(offset);
+        field_json["offset"] = static_cast<int64_t>(running_offset);
         field_json["size"] = size;
         field_json["endianness"] = default_endianness_;
 
         json_field_mapping_[name] = std::move(field_json);
-        total_parsed_size += size;
+        running_offset += size;
     }
+
 
     if (json_field_mapping_.empty()) {
         throw std::runtime_error("ReflectionBasedParser: No fields found for class " + class_name_);
