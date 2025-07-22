@@ -7,7 +7,6 @@
 #include <TRealData.h>
 #include <TList.h>
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 
 #include <cstdint>
 #include <cstring>
