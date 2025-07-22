@@ -48,6 +48,8 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
   PUBLIC
+    analysis_pipeline::spdlog_header_only
+    analysis_pipeline::nlohmann_json_header_only
     analysis_pipeline::analysis_pipeline_core
     analysis_pipeline::unpacker_data_products_core
     ROOT::Core
