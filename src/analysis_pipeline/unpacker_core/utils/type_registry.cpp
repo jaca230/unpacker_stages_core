@@ -1,5 +1,7 @@
 #include "analysis_pipeline/unpacker_core/utils/type_registry.h"
 #include <spdlog/spdlog.h>
+#include <regex>
+#include <cstring>
 
 TypeRegistry& TypeRegistry::Instance() {
     static TypeRegistry instance;
@@ -78,12 +80,14 @@ size_t TypeRegistry::GetTypeSize(const std::string& type_name) const {
 TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name) const {
     spdlog::debug("GetHandler called with '{}'", type_name);
 
+    // Direct handler for primitive types
     auto it = handlers_.find(type_name);
     if (it != handlers_.end()) {
         spdlog::debug("Found direct handler for '{}'", type_name);
         return it->second;
     }
 
+    // Check for ROOT-style fixed-size array types
     std::smatch match;
     std::regex root_array_regex(R"(array<([^,>]+),(\d+)>)");
 
@@ -96,36 +100,43 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
 
         spdlog::debug("Detected ROOT array type with base '{}', count {}", base_type, count);
 
-        auto base_handler = GetHandler(base_type); // Recursive for nested arrays
-        if (!base_handler) {
-            spdlog::warn("No handler for base type '{}'", base_type);
-            return nullptr;
-        }
-
         size_t element_size = GetTypeSize(base_type);
         if (element_size == 0) {
             spdlog::warn("Unknown size for base type '{}'", base_type);
             return nullptr;
         }
 
-        spdlog::debug("Constructing handler for ROOT array type '{}'", type_name);
-
-        return [base_handler, count, element_size, this](
+        // This handler copies the array memory directly, with endian swapping per element if needed.
+        return [count, element_size, base_type, this](
             const uint8_t* buffer, size_t buffer_size,
             size_t offset, bool little_endian,
             TObject* obj, TDataMember* member) -> bool {
 
-            for (size_t i = 0; i < count; ++i) {
-                size_t elem_offset = offset + i * element_size;
-                if (elem_offset + element_size > buffer_size) {
-                    spdlog::error("Buffer too small for element {} of array '{}'", i, member->GetName());
-                    return false;
-                }
-                if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
-                    spdlog::error("Failed to handle ROOT array element {} at offset {}", i, elem_offset);
-                    return false;
-                }
+            size_t total_size = count * element_size;
+            if (offset + total_size > buffer_size) {
+                spdlog::error("Buffer too small for array '{}', needed {} bytes but buffer size is {}", 
+                              member->GetName(), total_size, buffer_size - offset);
+                return false;
             }
+
+            char* base = reinterpret_cast<char*>(obj);
+            char* member_ptr = base + member->GetOffset();
+
+            if (little_endian == system_little_endian_) {
+                // Endian matches: direct memcpy
+                std::memcpy(member_ptr, buffer + offset, total_size);
+                spdlog::debug("Memcpy entire array '{}' of {} elements", member->GetName(), count);
+            } else {
+                // Endian mismatch: copy element-wise with byte swap
+                for (size_t i = 0; i < count; ++i) {
+                    const uint8_t* src = buffer + offset + i * element_size;
+                    char* dst = member_ptr + i * element_size;
+                    std::memcpy(dst, src, element_size);
+                    SwapBytes(dst, element_size);
+                }
+                spdlog::debug("Copied and swapped endian for array '{}' of {} elements", member->GetName(), count);
+            }
+
             return true;
         };
     }
