@@ -17,4 +17,6 @@ private:
     std::shared_ptr<ConfigManager> local_config_;
     std::string repeat_count_product_name_;
     std::string repeat_count_product_member_;
+
+    ClassDefOverride(ByteStreamProcessorRepeatingSequenceStage, 1);
 };

@@ -4,6 +4,8 @@
 #include <TClass.h>
 #include <TObject.h>
 
+ClassImp(ByteStreamProcessorRepeatingSequenceStage)
+
 void ByteStreamProcessorRepeatingSequenceStage::OnInit() {
     ByteStreamProcessorStage::OnInit(); // Sets input stream + index names
 
