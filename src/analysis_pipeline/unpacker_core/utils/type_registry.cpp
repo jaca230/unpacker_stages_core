@@ -1,5 +1,6 @@
 #include "analysis_pipeline/unpacker_core/utils/type_registry.h"
 #include <spdlog/spdlog.h>
+#include <TMethodCall.h>
 
 TypeRegistry& TypeRegistry::Instance() {
     static TypeRegistry instance;
@@ -110,19 +111,42 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
 
         spdlog::debug("Constructing handler for ROOT array type '{}'", type_name);
 
-        return [base_handler = base_handler_it->second, count, element_size, this](const uint8_t* buffer, size_t buffer_size,
-                                                                                   size_t offset, bool little_endian,
-                                                                                   TObject* obj, TDataMember* member) -> bool {
+        return [base_handler = base_handler_it->second, count, element_size, this](
+            const uint8_t* buffer, size_t buffer_size,
+            size_t offset, bool little_endian,
+            TObject* obj, TDataMember* member) -> bool {
+
             if (little_endian == system_little_endian_) {
                 size_t total_size = count * element_size;
                 if (offset + total_size > buffer_size) {
                     spdlog::error("Buffer too small for memcpy of array '{}'", member->GetName());
                     return false;
                 }
-                char* base = reinterpret_cast<char*>(obj);
-                char* member_ptr = base + member->GetOffset();
-                std::memcpy(member_ptr, buffer + offset, total_size);
-                spdlog::debug("Memcpy entire array for '{}', size {}", member->GetName(), total_size);
+
+                TClass* cl = obj->IsA();
+                TMethodCall* setter = member->SetterMethod(cl);
+
+                if (!setter) {
+                    spdlog::warn("No setter method found for array '{}', falling back to memcpy", member->GetName());
+                    char* base = reinterpret_cast<char*>(obj);
+                    char* member_ptr = base + member->GetOffset();
+                    std::memcpy(member_ptr, buffer + offset, total_size);
+                    spdlog::debug("Memcpy entire array for '{}', size {}", member->GetName(), total_size);
+                    return true;
+                }
+
+                const void* args[2] = { buffer, &offset };
+                try {
+                    setter->Execute(obj, args, 2, nullptr);
+                } catch (const std::exception& e) {
+                    spdlog::error("Setter execution threw exception for '{}': {}", member->GetName(), e.what());
+                    return false;
+                } catch (...) {
+                    spdlog::error("Setter execution threw unknown exception for '{}'", member->GetName());
+                    return false;
+                }
+
+                spdlog::debug("Called setter for array '{}'", member->GetName());
                 return true;
             } else {
                 for (size_t i = 0; i < count; ++i) {
@@ -135,6 +159,7 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
                 return true;
             }
         };
+
     }
 
     spdlog::warn("No handler found for type '{}'", type_name);
