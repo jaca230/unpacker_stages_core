@@ -8,7 +8,6 @@
 #include <memory>
 #include <TObject.h>
 #include <TDataMember.h>
-#include <spdlog/spdlog.h>
 #include <cstring>
 #include <algorithm>
 
@@ -33,7 +32,6 @@ private:
     template<typename T>
     static bool ReadValue(const uint8_t* buffer, size_t buffer_size, size_t offset, bool little_endian, T& out_value) {
         if (offset + sizeof(T) > buffer_size) {
-            spdlog::error("TypeRegistry: Buffer overrun while reading {} bytes at offset {}", sizeof(T), offset);
             return false;
         }
         std::memcpy(&out_value, buffer + offset, sizeof(T));
