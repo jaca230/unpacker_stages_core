@@ -7,17 +7,22 @@ TypeRegistry& TypeRegistry::Instance() {
 }
 
 TypeRegistry::TypeRegistry() {
-    // Initialize system endianness once
+    // Detect system endianness once
     uint16_t test = 0x1;
     system_little_endian_ = (*reinterpret_cast<uint8_t*>(&test) == 0x1);
+    spdlog::debug("System endianness detected as {}", system_little_endian_ ? "little" : "big");
 
 #define REGISTER_TYPE(TYPE_NAME, CPP_TYPE) \
     handlers_[TYPE_NAME] = [this](const uint8_t* buffer, size_t buffer_size, size_t offset, bool little_endian, TObject* obj, TDataMember* member) -> bool { \
         CPP_TYPE val; \
-        if (!ReadValue<CPP_TYPE>(buffer, buffer_size, offset, little_endian, val)) return false; \
+        if (!ReadValue<CPP_TYPE>(buffer, buffer_size, offset, little_endian, val)) { \
+            spdlog::error("Failed to read value of type {} at offset {}", TYPE_NAME, offset); \
+            return false; \
+        } \
         return AssignValue<CPP_TYPE>(obj, member, val); \
     }; \
-    sizes_[TYPE_NAME] = sizeof(CPP_TYPE);
+    sizes_[TYPE_NAME] = sizeof(CPP_TYPE); \
+    spdlog::debug("Registered handler for type '{}' with size {}", TYPE_NAME, sizeof(CPP_TYPE));
 
     REGISTER_TYPE("char", int8_t)
     REGISTER_TYPE("unsigned char", uint8_t)
@@ -43,33 +48,53 @@ TypeRegistry::TypeRegistry() {
 }
 
 size_t TypeRegistry::GetTypeSize(const std::string& type_name) const {
+    spdlog::debug("GetTypeSize called with '{}'", type_name);
     auto it = sizes_.find(type_name);
-    if (it != sizes_.end()) return it->second;
+    if (it != sizes_.end()) {
+        spdlog::debug("Found direct size for '{}': {}", type_name, it->second);
+        return it->second;
+    }
 
     std::smatch match;
-    // ROOT-style array<T,N>
     std::regex root_array_regex(R"(array<([^,>]+),(\d+)>)");
+
     if (std::regex_match(type_name, match, root_array_regex)) {
         std::string base_type = match[1];
         size_t count = std::stoul(match[2]);
+
+        base_type.erase(0, base_type.find_first_not_of(" \t"));
+        base_type.erase(base_type.find_last_not_of(" \t") + 1);
+
+        spdlog::debug("Detected ROOT array type with base '{}', count {}", base_type, count);
         size_t base_size = GetTypeSize(base_type);
+        spdlog::debug("Base type '{}' size: {}", base_type, base_size);
         return base_size * count;
     }
 
+    spdlog::warn("Unknown type size for '{}'", type_name);
     return 0;
 }
 
 TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name) const {
-    // Direct handler first
+    spdlog::debug("GetHandler called with '{}'", type_name);
+
     auto it = handlers_.find(type_name);
-    if (it != handlers_.end()) return it->second;
+    if (it != handlers_.end()) {
+        spdlog::debug("Found direct handler for '{}'", type_name);
+        return it->second;
+    }
 
     std::smatch match;
-    // Handle ROOT style array<T,N>
-    std::regex root_array_regex(R"(array<([\w:]+),(\d+)>)");
+    std::regex root_array_regex(R"(array<([^,>]+),(\d+)>)");
+
     if (std::regex_match(type_name, match, root_array_regex)) {
         std::string base_type = match[1];
         size_t count = std::stoul(match[2]);
+
+        base_type.erase(0, base_type.find_first_not_of(" \t"));
+        base_type.erase(base_type.find_last_not_of(" \t") + 1);
+
+        spdlog::debug("Detected ROOT array type with base '{}', count {}", base_type, count);
 
         auto base_handler_it = handlers_.find(base_type);
         if (base_handler_it == handlers_.end()) {
@@ -83,11 +108,12 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
             return nullptr;
         }
 
+        spdlog::debug("Constructing handler for ROOT array type '{}'", type_name);
+
         return [base_handler = base_handler_it->second, count, element_size, this](const uint8_t* buffer, size_t buffer_size,
-                                                                                size_t offset, bool little_endian,
-                                                                                TObject* obj, TDataMember* member) -> bool {
+                                                                                   size_t offset, bool little_endian,
+                                                                                   TObject* obj, TDataMember* member) -> bool {
             if (little_endian == system_little_endian_) {
-                // memcpy entire array at once
                 size_t total_size = count * element_size;
                 if (offset + total_size > buffer_size) {
                     spdlog::error("Buffer too small for memcpy of array '{}'", member->GetName());
@@ -96,9 +122,9 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
                 char* base = reinterpret_cast<char*>(obj);
                 char* member_ptr = base + member->GetOffset();
                 std::memcpy(member_ptr, buffer + offset, total_size);
+                spdlog::debug("Memcpy entire array for '{}', size {}", member->GetName(), total_size);
                 return true;
             } else {
-                // fall back to element-wise copy with byte swapping
                 for (size_t i = 0; i < count; ++i) {
                     size_t elem_offset = offset + i * element_size;
                     if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
@@ -111,10 +137,12 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
         };
     }
 
+    spdlog::warn("No handler found for type '{}'", type_name);
     return nullptr;
 }
 
 void TypeRegistry::RegisterHandler(const std::string& type_name, HandlerFunc handler) {
+    spdlog::debug("RegisterHandler called for '{}'", type_name);
     handlers_[type_name] = std::move(handler);
 }
 
