@@ -28,10 +28,8 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CPM.cmake)
 
 # ----------------------- Required Packages ------------------------
 find_package(ROOT REQUIRED COMPONENTS Core RIO)
-find_package(TBB REQUIRED)
 find_package(analysis_pipeline_core REQUIRED)
 find_package(unpacker_data_products_core REQUIRED)
-find_package(analysis_pipeline REQUIRED)
 include(${ROOT_USE_FILE})
 
 # ----------------------- Source Files -----------------------------
@@ -54,7 +52,6 @@ target_link_libraries(${PROJECT_NAME}
     analysis_pipeline::nlohmann_json_header_only
     analysis_pipeline::analysis_pipeline_core
     analysis_pipeline::unpacker_data_products_core
-    analysis_pipeline::analysis_pipeline
     ROOT::Core
     ROOT::RIO
 )
@@ -113,8 +110,6 @@ set(ROOT_DICTIONARY_INCLUDE_OPTIONS "-I${CMAKE_CURRENT_SOURCE_DIR}/include")
 append_target_includes_to_root_dict(analysis_pipeline::nlohmann_json_header_only)
 append_target_includes_to_root_dict(analysis_pipeline::analysis_pipeline_core)
 append_target_includes_to_root_dict(analysis_pipeline::unpacker_data_products_core)
-append_target_includes_to_root_dict(TBB::tbb)
-append_target_includes_to_root_dict(analysis_pipeline::analysis_pipeline)
 
 file(GLOB_RECURSE STAGE_HEADERS CONFIGURE_DEPENDS
   ${PLUGIN_ROOT_PATH}/stages/*.h
