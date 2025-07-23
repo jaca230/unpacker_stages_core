@@ -6,6 +6,8 @@
 
 ClassImp(ByteStreamProcessorRepeatingSequenceStage)
 
+ByteStreamProcessorRepeatingSequenceStage::ByteStreamProcessorRepeatingSequenceStage() = default;
+
 void ByteStreamProcessorRepeatingSequenceStage::OnInit() {
     ByteStreamProcessorStage::OnInit(); // Sets input stream + index names
 
