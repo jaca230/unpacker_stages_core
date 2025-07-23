@@ -1,6 +1,5 @@
 #include "analysis_pipeline/unpacker_core/utils/type_registry.h"
 #include <spdlog/spdlog.h>
-#include <TMethodCall.h>
 
 TypeRegistry& TypeRegistry::Instance() {
     static TypeRegistry instance;
@@ -97,8 +96,8 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
 
         spdlog::debug("Detected ROOT array type with base '{}', count {}", base_type, count);
 
-        auto base_handler_it = handlers_.find(base_type);
-        if (base_handler_it == handlers_.end()) {
+        auto base_handler = GetHandler(base_type); // Recursive for nested arrays
+        if (!base_handler) {
             spdlog::warn("No handler for base type '{}'", base_type);
             return nullptr;
         }
@@ -111,55 +110,24 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
 
         spdlog::debug("Constructing handler for ROOT array type '{}'", type_name);
 
-        return [base_handler = base_handler_it->second, count, element_size, this](
+        return [base_handler, count, element_size, this](
             const uint8_t* buffer, size_t buffer_size,
             size_t offset, bool little_endian,
             TObject* obj, TDataMember* member) -> bool {
 
-            if (little_endian == system_little_endian_) {
-                size_t total_size = count * element_size;
-                if (offset + total_size > buffer_size) {
-                    spdlog::error("Buffer too small for memcpy of array '{}'", member->GetName());
+            for (size_t i = 0; i < count; ++i) {
+                size_t elem_offset = offset + i * element_size;
+                if (elem_offset + element_size > buffer_size) {
+                    spdlog::error("Buffer too small for element {} of array '{}'", i, member->GetName());
                     return false;
                 }
-
-                TClass* cl = obj->IsA();
-                TMethodCall* setter = member->SetterMethod(cl);
-
-                if (!setter) {
-                    spdlog::warn("No setter method found for array '{}', falling back to memcpy", member->GetName());
-                    char* base = reinterpret_cast<char*>(obj);
-                    char* member_ptr = base + member->GetOffset();
-                    std::memcpy(member_ptr, buffer + offset, total_size);
-                    spdlog::debug("Memcpy entire array for '{}', size {}", member->GetName(), total_size);
-                    return true;
-                }
-
-                const void* args[2] = { buffer, &offset };
-                try {
-                    setter->Execute(obj, args, 2, nullptr);
-                } catch (const std::exception& e) {
-                    spdlog::error("Setter execution threw exception for '{}': {}", member->GetName(), e.what());
-                    return false;
-                } catch (...) {
-                    spdlog::error("Setter execution threw unknown exception for '{}'", member->GetName());
+                if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
+                    spdlog::error("Failed to handle ROOT array element {} at offset {}", i, elem_offset);
                     return false;
                 }
-
-                spdlog::debug("Called setter for array '{}'", member->GetName());
-                return true;
-            } else {
-                for (size_t i = 0; i < count; ++i) {
-                    size_t elem_offset = offset + i * element_size;
-                    if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
-                        spdlog::error("Failed to handle ROOT array element {} at offset {}", i, elem_offset);
-                        return false;
-                    }
-                }
-                return true;
             }
+            return true;
         };
-
     }
 
     spdlog::warn("No handler found for type '{}'", type_name);
