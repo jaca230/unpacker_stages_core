@@ -10,10 +10,16 @@
 #include <TDataMember.h>
 #include <cstring>
 #include <algorithm>
+#include <regex>
 
 class TypeRegistry {
 public:
-    using HandlerFunc = std::function<bool(const uint8_t* buffer, size_t buffer_size, size_t offset, bool little_endian, TObject* obj, TDataMember* member)>;
+    using HandlerFunc = std::function<bool(const uint8_t* buffer,
+                                           size_t buffer_size,
+                                           size_t offset,
+                                           bool little_endian,
+                                           TObject* obj,
+                                           TDataMember* member)>;
 
     static TypeRegistry& Instance();
 
@@ -26,39 +32,35 @@ private:
     TypeRegistry(const TypeRegistry&) = delete;
     TypeRegistry& operator=(const TypeRegistry&) = delete;
 
-    std::unordered_map<std::string, HandlerFunc> handlers_;
+    bool system_little_endian_;
 
-    // Template utilities defined here (inline in header)
+    std::unordered_map<std::string, HandlerFunc> handlers_;
+    std::unordered_map<std::string, size_t> sizes_;
+
     template<typename T>
-    static bool ReadValue(const uint8_t* buffer, size_t buffer_size, size_t offset, bool little_endian, T& out_value) {
+    bool ReadValue(const uint8_t* buffer, size_t buffer_size, size_t offset, bool little_endian, T& out_value) const {
         if (offset + sizeof(T) > buffer_size) {
             return false;
         }
         std::memcpy(&out_value, buffer + offset, sizeof(T));
 
-        uint16_t test = 0x1;
-        bool system_little_endian = (*reinterpret_cast<uint8_t*>(&test) == 0x1);
-
-        if (little_endian != system_little_endian) {
+        if (little_endian != system_little_endian_) {
             SwapBytes(&out_value, sizeof(T));
         }
         return true;
     }
 
     template<typename T>
-    static bool AssignValue(TObject* obj, TDataMember* member, const T& value) {
+    bool AssignValue(TObject* obj, TDataMember* member, const T& value) const {
         char* base = reinterpret_cast<char*>(obj);
         char* member_ptr = base + member->GetOffset();
         std::memcpy(member_ptr, &value, sizeof(T));
         return true;
     }
 
-    static void SwapBytes(void* data, size_t size) {
-        uint8_t* bytes = static_cast<uint8_t*>(data);
-        for (size_t i = 0; i < size / 2; ++i) {
-            std::swap(bytes[i], bytes[size - 1 - i]);
-        }
-    }
+    static void SwapBytes(void* data, size_t size);
+
+    size_t GetTypeSize(const std::string& type_name) const;
 };
 
 #endif // UNPACKER_CORE_UTILS_TYPE_REGISTRY_H
