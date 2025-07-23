@@ -46,18 +46,9 @@ size_t TypeRegistry::GetTypeSize(const std::string& type_name) const {
     auto it = sizes_.find(type_name);
     if (it != sizes_.end()) return it->second;
 
-    // C-style array: int[5]
-    std::regex array_regex(R"(([\w:]+)\[(\d+)\])");
     std::smatch match;
-    if (std::regex_match(type_name, match, array_regex)) {
-        std::string base_type = match[1];
-        size_t count = std::stoul(match[2]);
-        size_t base_size = GetTypeSize(base_type);
-        return base_size * count;
-    }
-
     // ROOT-style array<T,N>
-    std::regex root_array_regex(R"(array<([\w:]+),(\d+)>)");
+    std::regex root_array_regex(R"(array<([^,>]+),(\d+)>)");
     if (std::regex_match(type_name, match, root_array_regex)) {
         std::string base_type = match[1];
         size_t count = std::stoul(match[2]);
@@ -73,39 +64,7 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
     auto it = handlers_.find(type_name);
     if (it != handlers_.end()) return it->second;
 
-    // Handle C-style arrays: type[N]
-    std::regex array_regex(R"(([\w:]+)\[(\d+)\])");
     std::smatch match;
-    if (std::regex_match(type_name, match, array_regex)) {
-        std::string base_type = match[1];
-        size_t count = std::stoul(match[2]);
-
-        auto base_handler_it = handlers_.find(base_type);
-        if (base_handler_it == handlers_.end()) {
-            spdlog::warn("No handler for base type '{}'", base_type);
-            return nullptr;
-        }
-
-        size_t element_size = GetTypeSize(base_type);
-        if (element_size == 0) {
-            spdlog::warn("Unknown size for base type '{}'", base_type);
-            return nullptr;
-        }
-
-        return [base_handler = base_handler_it->second, count, element_size](const uint8_t* buffer, size_t buffer_size,
-                                                                             size_t offset, bool little_endian,
-                                                                             TObject* obj, TDataMember* member) -> bool {
-            for (size_t i = 0; i < count; ++i) {
-                size_t elem_offset = offset + i * element_size;
-                if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
-                    spdlog::error("Failed to handle array element {} at offset {}", i, elem_offset);
-                    return false;
-                }
-            }
-            return true;
-        };
-    }
-
     // Handle ROOT style array<T,N>
     std::regex root_array_regex(R"(array<([\w:]+),(\d+)>)");
     if (std::regex_match(type_name, match, root_array_regex)) {
@@ -124,17 +83,31 @@ TypeRegistry::HandlerFunc TypeRegistry::GetHandler(const std::string& type_name)
             return nullptr;
         }
 
-        return [base_handler = base_handler_it->second, count, element_size](const uint8_t* buffer, size_t buffer_size,
-                                                                             size_t offset, bool little_endian,
-                                                                             TObject* obj, TDataMember* member) -> bool {
-            for (size_t i = 0; i < count; ++i) {
-                size_t elem_offset = offset + i * element_size;
-                if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
-                    spdlog::error("Failed to handle ROOT array element {} at offset {}", i, elem_offset);
+        return [base_handler = base_handler_it->second, count, element_size, this](const uint8_t* buffer, size_t buffer_size,
+                                                                                size_t offset, bool little_endian,
+                                                                                TObject* obj, TDataMember* member) -> bool {
+            if (little_endian == system_little_endian_) {
+                // memcpy entire array at once
+                size_t total_size = count * element_size;
+                if (offset + total_size > buffer_size) {
+                    spdlog::error("Buffer too small for memcpy of array '{}'", member->GetName());
                     return false;
                 }
+                char* base = reinterpret_cast<char*>(obj);
+                char* member_ptr = base + member->GetOffset();
+                std::memcpy(member_ptr, buffer + offset, total_size);
+                return true;
+            } else {
+                // fall back to element-wise copy with byte swapping
+                for (size_t i = 0; i < count; ++i) {
+                    size_t elem_offset = offset + i * element_size;
+                    if (!base_handler(buffer, buffer_size, elem_offset, little_endian, obj, member)) {
+                        spdlog::error("Failed to handle ROOT array element {} at offset {}", i, elem_offset);
+                        return false;
+                    }
+                }
+                return true;
             }
-            return true;
         };
     }
 
