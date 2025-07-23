@@ -22,7 +22,7 @@ bool FieldMappingParser::ParseAndFill(const uint8_t* buffer,
         const std::string& member_name = it.key();
         const nlohmann::json& field_info = it.value();
 
-        spdlog::debug("Parsing field '{}': {}", member_name, field_info.dump());
+        //spdlog::debug("Parsing field '{}': {}", member_name, field_info.dump());
 
         if (!ExtractAndAssignField(buffer, buffer_size, start_offset, member_name, field_info, obj)) {
             spdlog::error("FieldMappingParser: Failed to extract/assign field '{}'", member_name);
