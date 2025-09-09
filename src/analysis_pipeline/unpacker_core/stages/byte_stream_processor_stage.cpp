@@ -72,14 +72,14 @@ void ByteStreamProcessorStage::createLastReadIndexProduct(int index) {
 PipelineDataProductReadLock ByteStreamProcessorStage::getInputByteStreamLock() const {
     if (!getDataProductManager()->hasProduct(input_byte_stream_product_name_)) {
         spdlog::debug("[{}] Input ByteStream product '{}' not found", Name(), input_byte_stream_product_name_);
-        return PipelineDataProductLock();
+        return PipelineDataProductReadLock();
     }
 
     try {
         return getDataProductManager()->checkoutRead(input_byte_stream_product_name_);
     } catch (const std::exception& e) {
         spdlog::error("[{}] Failed to checkout ByteStream product '{}': {}", Name(), input_byte_stream_product_name_, e.what());
-        return PipelineDataProductLock();
+        return PipelineDataProductReadLock();
     }
 }
 
