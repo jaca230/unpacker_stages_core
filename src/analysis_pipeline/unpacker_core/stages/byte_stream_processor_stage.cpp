@@ -69,7 +69,7 @@ void ByteStreamProcessorStage::createLastReadIndexProduct(int index) {
     getDataProductManager()->addOrUpdate(last_index_product_name_, std::move(product));
 }
 
-PipelineDataProductLock ByteStreamProcessorStage::getInputByteStreamLock() const {
+PipelineDataProductReadLock ByteStreamProcessorStage::getInputByteStreamLock() const {
     if (!getDataProductManager()->hasProduct(input_byte_stream_product_name_)) {
         spdlog::debug("[{}] Input ByteStream product '{}' not found", Name(), input_byte_stream_product_name_);
         return PipelineDataProductLock();

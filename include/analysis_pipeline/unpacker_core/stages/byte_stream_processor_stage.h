@@ -3,7 +3,7 @@
 
 #include "analysis_pipeline/core/stages/base_stage.h"
 #include "analysis_pipeline/unpacker_core/data_products/ByteStream.h"
-#include "analysis_pipeline/core/data/pipeline_data_product_lock.h"
+#include "analysis_pipeline/core/data/pipeline_data_product_read_lock.h"
 #include "analysis_pipeline/unpacker_core/utils/field_mapping_parser.h" 
 
 #include <memory>
@@ -25,7 +25,7 @@ protected:
 
     /// Returns a lock object holding a read lock on the ByteStream product.
     /// If product does not exist or lock fails, returns invalid PipelineDataProductLock.
-    PipelineDataProductLock getInputByteStreamLock() const;
+    PipelineDataProductReadLock getInputByteStreamLock() const;
 
     std::unique_ptr<TObject> parseObjectFromBytes(
         TObject* obj,
